@@ -464,7 +464,6 @@ int process_cloud()
 					
 					send_measurement = true;
 					viewer->addCube(min_point_AABB.x, max_point_AABB.x, min_point_AABB.y, max_point_AABB.y, min_point_AABB.z, max_point_AABB.z, 1.0, 1.0, 0.0, ss1.str());
-					//viewer->addText3D(cluster.str(), max_point_AABB, 1.0, 1.0, 1.0, 1.0, ss2.str());
 					viewer->setRepresentationToWireframeForAllActors();
 
 				}
@@ -515,6 +514,9 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
         {
         mxSetField(p, j, "x", mxCreateDoubleScalar(matlabsend[i][j].x));
         mxSetField(p, j, "y", mxCreateDoubleScalar(matlabsend[i][j].y));
+		mxSetField(p, j, "z", mxCreateDoubleScalar(matlabsend[i][j].z));
+		mxSetField(p, j, "azimuth", mxCreateDoubleScalar(matlabsend[i][j].azimuth));
+		mxSetField(p, j, "utc", mxCreateDoubleScalar(matlabsend[i][j].utc));
         }
           mxSetField(plhs[0], i, "cloud", p);
         
