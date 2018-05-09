@@ -121,14 +121,15 @@ std::vector<std::vector<measurement>> matlabsend;
 const char *fieldsPoint[] = {"x", "y", "z","azimuth","utc"};
 /* MAIN FUNCTION */
 
-int process_cloud()
+int process_cloud(std::string pca)
 {
 	//-----------------------------------------------------------------------------------------------------------------------------------------------
     // Default values
 	std::string ipaddress("192.168.1.70");
 	std::string port("2368");
-	std::string pcap("velodyne-32_2.pcap");
-	std::string clbr("config.xml");
+	std::string pcap;
+    pcap=pca;
+	std::string clbr("HDL-32.xml");
 	/* VARIABLE DECLARATIONS */
     std::cout << "-ipadress : " << ipaddress << std::endl;
 	std::cout << "-port : " << port << std::endl;
@@ -138,7 +139,7 @@ int process_cloud()
 	std::vector<measurement> meas_snd(10);
 
 
-	// Clock
+// Clock
 	clock_t tStart;
 	double delta_t = 0.1;
 
@@ -236,7 +237,8 @@ int process_cloud()
 	grabber->start();
 
 	//-----------------------------------------------------------------------------------------------------------------------------------------------
-	
+	const float fps = grabber->getFramesPerSecond();
+
 	/* CORE PROCESSING */
 	bool first_frame = false; uint64_t time_frame; float current_time = 0; uint32_t last_time = 0, ls_t = 0; uint32_t n, u;
 
@@ -263,7 +265,8 @@ int process_cloud()
 			cout << (n - last_time) << endl;
 			time_gap = n - last_time;
 			last_time = n;
-			
+			std::string frameid=cloud->header.frame_id;
+			cout << frameid << endl;
 			//---------------------------------------------------------------------------------------------------------------------------------------
 		
 
@@ -283,59 +286,21 @@ int process_cloud()
 			// Handler for color selection of  Point Cloud
 			handler->setInputCloud(cloud);
 
-			// Make room for a plane equation (ax+by+cz+d=0)
-			seg.setOptimizeCoefficients(true);				// Optional
-			seg.setMethodType(pcl::SAC_RANSAC);
-			seg.setModelType(pcl::SACMODEL_PLANE);
-			seg.setDistanceThreshold(0.45f);
-			seg.setInputCloud(cloud);
-			seg.segment(*inliers_plane, *plane);
+			pcl::PassThrough<PointType> pass_z;
+			pass_z.setInputCloud(cloud);
+			pass_z.setFilterFieldName("z");
+			pass_z.setFilterLimits(-2.0f, 10.0f);
+			pass_z.setFilterLimitsNegative(false);
+			pass_z.filter(*cloud_outliers);
 
-			if (inliers_plane->indices.size() == 0) {
-				PCL_ERROR("Could not estimate a planar model for the given dataset.\n");
-				return (-1);
-			}
-			if (debug)
-			{
-				std::cerr << "PointCloud after filtering: " << cloud_filtered->width * cloud_filtered->height
-					<< " data points (" << pcl::getFieldsList(*cloud_filtered) << ").\n\n";
-			}
-
-			// Extract Inliers
-
-			extract.setInputCloud(cloud);
-			extract.setIndices(inliers_plane);
-			extract.setNegative(false);			// Extract the inliers
-			extract.filter(*cloud_inliers);		// cloud_inliers contains the plane
-
-
-												// Create the filtering object
-			
-
-			// Extract Outliers
-			extract.setNegative(true);
-			extract.filter(*cloud_outliers);		// cloud_outliers contains everything but the plane
-			if (debug)
-			{
-				std::cerr << "Outliners Initial : " << cloud_outliers->width * cloud_outliers->height
-					<< " data points (" << pcl::getFieldsList(*cloud_outliers) << ").\n\n";
-			}
-
+		
 			pcl::PassThrough<PointType> pass;
 			pass.setInputCloud(cloud_outliers);
 			pass.setFilterFieldName("intensity");
-			pass.setFilterLimits(3.0f, 300.0f);
-			pass.setFilterLimitsNegative(true);
-			pass.filter(*cloud_filtered);
-
-			// Removing Outliers
-			// Create the filtering object
-			pcl::StatisticalOutlierRemoval<PointType> sor;
-			sor.setInputCloud(cloud_filtered);
-			sor.setMeanK(50);
-			sor.setStddevMulThresh(1.0);
-			sor.filter(*cloud_outliers);
-
+			pass.setFilterLimits(150.0f, 300.0f);
+			pass.setFilterLimitsNegative(false);
+			pass.filter(*cloud_outliers);
+			
 			if (debug)
 			{
 				std::cerr << "Stat Outliners Final: " << cloud_outliers->width * cloud_outliers->height
@@ -346,10 +311,9 @@ int process_cloud()
 				viewer->addPointCloud(cloud_outliers, *handler, "cloud outs");
 
 			}
-
-			if (1)
+			
+			if (0)
 			{
-
 				pcl::visualization::PointCloudColorHandlerCustom<PointType> rgb2(cloud_inliers, 255.0, 0.0, 0.0); //This will display the point cloud in green (R,G,B)
 				if ((!viewer->updatePointCloud(cloud_inliers, rgb2, "cloud ins")))
 				{
@@ -373,15 +337,13 @@ int process_cloud()
 			{
 				// Eucledian
 				pcl::EuclideanClusterExtraction<PointType> ec;
-				ec.setClusterTolerance(0.45); // 2cm
-				ec.setMinClusterSize(100);
+				ec.setClusterTolerance(0.8); // 2cm
+				ec.setMinClusterSize(3);
 				ec.setMaxClusterSize(6000);
 				ec.setSearchMethod(search_tree);
 				ec.setInputCloud(cloud_outliers);
 				ec.extract(cluster_indices);
 			}
-
-
 
 			//---------------------------------------------------------------------------------------------------------------------------------------
 
@@ -419,18 +381,9 @@ int process_cloud()
 					/*+++++++++++++++
 					Outliner removal in each cluster
 					+++++++++++++++++*/
-					pcl::RadiusOutlierRemoval<PointType> outrem;
-					// build the filter
-					outrem.setInputCloud(cloud_cluster_vector[i]);
-					outrem.setRadiusSearch(0.8);
-					outrem.setMinNeighborsInRadius(2);
-					// apply filter
-					outrem.filter(*cloud_cluster_vector[i]);
-
-					//viewer->removeShape(ss.str());
+				
 					std::stringstream ss1, cluster,ss2;
 				
-
 					/**+++++++++++++++
 					Bounidng box generation
 					++++++++++++++++++*/
@@ -445,14 +398,19 @@ int process_cloud()
 					ss1 << "line_1" << i;
 					ss2 << "s2" << i;
 
-					double cluster_x = 0, cluster_y = 0, cluster_angle = 0;
+					float cluster_x = 0, cluster_y = 0, cluster_angle = 0;
 					uint32_t time_cluster = 0;
 					cluster_x = (max_point_AABB.x + min_point_AABB.x) / 2;
 					cluster_y = (max_point_AABB.y + min_point_AABB.y) / 2;
+					float distance;
+					distance = sqrt(pow(cluster_x, 2.0) + pow(cluster_y, 2.0));
+					if (distance < 0.8)
+					{
+						continue;
+					}
 					cluster_angle = std::atan2(cluster_y,cluster_x);
-					cluster << cluster_angle;
-					meas_snd[i].x = cluster_x;
-					meas_snd[i].y = cluster_y;
+					meas_snd[i].x = cluster_x*cos(-3.14159)+cluster_y*sin(-3.14159);
+					meas_snd[i].y = cluster_y*cos(-3.14159)-cluster_x*sin(-3.14159);
 					if (cluster_angle < 0)
 					{
 						cluster_angle = 360 - cluster_angle;
@@ -469,13 +427,12 @@ int process_cloud()
 				}
 			}
 		}
-		
-        if(send_measurement)
+		if(send_measurement)
 		{ 
+
 			matlabsend.push_back(meas_snd);
+
 		}
-		
-		printf("\n\nTime taken: %.2fs\n\n", (double)(clock() - tStart) / CLOCKS_PER_SEC);
 	}
 
 	//-----------------------------------------------------------------------------------------------------------------------------------------------
@@ -502,13 +459,13 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 {
     mxArray *p;
     // convert it to MATLAB struct array and return it as output
+     std::string input_buf=mxArrayToString(prhs[0]);
+    process_cloud(input_buf);
    
-    process_cloud();
- 
     plhs[0] = mxCreateStructMatrix(1,matlabsend.size() , 1, fieldsStruct);
     for (int i=0; i<matlabsend.size(); i++) 
     {
-         p = mxCreateStructMatrix(matlabsend[i].size(), 1, 2, fieldsPoint);
+         p = mxCreateStructMatrix(matlabsend[i].size(), 1, 5, fieldsPoint);
         // start point
         for(int j=0;j<matlabsend[j].size();j++)
         {
