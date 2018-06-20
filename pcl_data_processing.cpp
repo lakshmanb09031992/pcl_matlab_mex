@@ -103,7 +103,7 @@ uint32_t calculate_utc(uint32_t time, uint32_t tim_gap, float azimuth)
 {
 	uint32_t time_calcualte = 0;
 	uint32_t time_degree = 0;
-	time_degree = tim_gap * (azimuth / 6.28);
+	time_degree = tim_gap * ((6.28319-azimuth) / 6.28319);
 	time_calcualte = time - time_degree;
 
 
@@ -212,12 +212,12 @@ void cluster(uint32_t n)
 			
 			meas_snd[i].x = cluster_x * cos(-3.14159) + cluster_y * sin(-3.14159);
 			meas_snd[i].y = cluster_y * cos(-3.14159) - cluster_x * sin(-3.14159);
-            cluster_angle = std::atan2(meas_snd[i].y, meas_snd[i].x);
+            cluster_angle = std::atan2(cluster_x, cluster_y);
 			if (cluster_angle < 0.0) 
             {
                 cluster_angle += 6.28319;
             }
-            meas_snd[i].azimuth = cluster_angle;
+            meas_snd[i].azimuth = n;
             uint32_t ut=calculate_utc(n,time_s, cluster_angle);
             meas_snd[i].utc = ut;
 			
